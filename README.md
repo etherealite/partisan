@@ -3,18 +3,20 @@ Partisan - Use Artisan everywhere
 Artisan command line interface wrapper for the Laravel 
 PHP framework
 
-
-## Description
+## What it does
 Partisan enables the use of the Artisan command line 
 interface from anywhere in your project directory, 
 not just the root directory asis normally the case.
+This is accomplished by wrapping artisan with a binary
+that lives in a a directory accessible from your $PATH,
+allowing you to call it from anywhere on your system.
 
 ## Without Partisan
 When using Artisan you find yourself continually running
 into the problem of having to do extra typing when not in the
 project root directory.
 
-### Having to chang you're working directory
+### Having to change you're working directory
 ```bash
 # Oh no I'm not in the project root.
 $ pwd
@@ -25,7 +27,7 @@ $ ./artisan
 # Man this sux
 ```
 
-### Having to prepend your artisna call with ```../../../```
+### Having to prepend your Artisan call with ```../../../```
 ```bash
 # I'm doing this again? Really?
 $ pwd
@@ -58,7 +60,7 @@ $ artisan
 That's it!
 
 ## Requirements
-* PHP >= 5.3.0
+* Laravel >= 3.x
 * Unix like OS**
 
 **If anyone would like to do the work to port it to Windows I would
