@@ -1,15 +1,21 @@
 #!/usr/bin/env php
 <?php
+
+// Try and make PHP not insane.
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+set_error_handler("e_handler");
+function e_handler( $errno, $errstr)
+{ 
+  debug_print_backtrace();
+  die();
+}
+
+// Maybe this script can work with windows someday.
 define('SEP', DIRECTORY_SEPARATOR);
 
-$HOME = getenv('HOME');
 
-$projects = array(
-  "$HOME/projects/graffiti",
-  "$HOME/projects/shitfuck"
-);
-
-function artisan_exec($projects)
+function artisan_exec($projects, )
 {
 
   $tree = build_tree($projects);
@@ -50,13 +56,13 @@ function build_tree($projects)
   $tree = array();
   foreach($projects as $project)
   {
-    $tree = add_proj($tree, $project);
+    $tree = add_node($tree, $project);
   }
   return $tree;
 }
 
 
-function add_proj($tree, $project)
+function add_node($tree, $project)
 {
   $proj_nodes = dir2array($project);
   $branch = &$tree;
@@ -103,5 +109,32 @@ function search_tree($dir, $tree)
   }
   return null;
 }
+
+
+$longopts = getopt(null, "project-add:");
+if (!array_key_exists("add", $longopts)) $project = $longopts["add"];
+if (count($argv) == 2 && $project != null)
+{
+  $project = realpath($project); 
+  if (! is_dir($project))
+  {
+    echo "project path $project, not a valid directory";
+  }
+  elseif ( ! file_exists($project. SEP . "artisan"))
+  {
+    echo "can't find artisan binary for project path $project.";
+  }
+  $tree = get_tree($path);
+  $tree = add_proj($project, $tree);
+  if( save_tree($path, $tree))
+  {
+    echo "new project $project has been added to partisan";
+  }
+  else
+  {
+
+$tree
+ artisan_exec($projects);
+
 
 artisan_exec($projects);
