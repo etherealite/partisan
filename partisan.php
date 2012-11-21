@@ -96,23 +96,7 @@ function strip_opts($options = "", $long_opts = array())
     $long_keys = array_map($strip_colon, $opts_keys);
   }
 
-  // return the requested 
-  if ($options && $long_opts)
-  {
     return array_merge($short_keys, $long_keys);
-  }
-  elseif ($options)
-  {
-    return $short_keys;
-  }
-  elseif($long_opts)
-  {
-    return $long_keys;
-  }
-  else
-  {
-    return null;
-  }
 }
 
 
@@ -125,7 +109,11 @@ function get_tree()
 }
 
 
-
+/*
+ * Determine the host operating system
+ *
+ * @return string
+ */
 function get_os()
 {
   // Assume that all systems that are not windows are unix.
@@ -208,7 +196,14 @@ function get_bin($path, $bin_name)
   else return null;
 }
 
-// forward arguments to artisan binary and execute it.
+
+/* forward arguments to artisan binary and execute it.
+ *
+ * @param string $bin_path
+ * @param array  $arguments
+ *
+ * @return integer
+ */
 function artisan_exec($bin_path, $arguments)
 {
   if ( $proj_root !== null)
@@ -251,8 +246,15 @@ function build_tree($projects)
   return $tree;
 }
 
-
-function add_path($tree, $path)
+/*
+ * Add a new path to a tree
+ *
+ * @param string $path
+ * @param array  $tree
+ *
+ * @return array
+ */
+function add_path($path, $tree)
 {
   $path_nodes = dir2array($path);
   $branch = &$tree;
@@ -272,7 +274,23 @@ function add_path($tree, $path)
 }
 
 
-function search_tree($dir, $tree)
+function dir2array($dir)
+{
+  // stripp root, trailing slash; surrounding space chars
+  $stripped = trim($dir, SEP.' \t');
+  return split(SEP, $stripped);
+}
+
+
+/*
+ * Search a tree for the given pth
+ *
+ * @param string $path
+ * @param array  $tree
+ *
+ * @return string
+ */
+function search_tree($path, $tree)
 {
   $nodes = dir2array($dir);
   $branch = $tree;
@@ -347,12 +365,6 @@ function add_proj($path)
 {
 }
 
-function dir2array($dir)
-{
-  // stripp root, trailing slash; surrounding space chars
-  $stripped = trim($dir, SEP.' \t');
-  return split(SEP, $stripped);
-}
 
 
 
