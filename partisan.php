@@ -19,17 +19,200 @@ define('SEP', DIRECTORY_SEPARATOR);
 define(OUR_OPTS, "");
 define(OUR_LONG, array("add-project:", "remove-project:"));
 
+// The name of the artisan binary
+define(ARTISAN_BIN, "artisan");
 
-// forward arguments to artisan binary and execute it.
-function artisan_exec($path, $arguments)
+// Tree structure containg all project directories
+$PROJ_TREE = array();
+// Flatt array structure containg all project directories
+$PROJ_TABLE = array();
+// The current operating system
+
+
+/*
+ * interpret arguments given from shell and act accordingly.
+ *
+ * @return void
+ */
+function run()
+{
+  $PWD = getenv('PWD');
+  $options = getopt($options, $long_opts);
+  $opt_keys = strip_opts(OUR_OPTS, OUR_LONG);
+
+  if (run_artisan($ARGV, $options, $opt_keys))
+  {
+    if(($tree = get_tree(user_dir())) == null)
+    {
+      echo "Couldn't find project tree cache";
+    }
+    elseif (($project_dir = search_tree($PWD, $tree)) == null)
+    {
+      echo "Current working directory not a subdirectory of"
+        . " a valid project";
+      exit(2);
+    }
+    elseif (($bin_path = get_bin($project_dir, ARTISAN_BIN)) == null)
+    {
+      echo "Coudn't find an artisan binary for project $project_dir\n";
+      exit(3);
+    }
+    else
+    {
+      $status = artisan_exec($bin_path, $ARGV);
+    }
+  }
+  else
+  {
+    $status = internal_exec($ARGV, $opt_keys);
+  }
+  exit($status);
+}
+
+
+/*
+ * strip ':' symboles from shell option definitions  and place
+ * them in a array
+ *
+ * @param  string $options
+ * @param  array  $long_opts
+ *
+ * @return array
+ */
+function strip_opts($options = "", $long_opts = array())
+{
+  // remove all ':' characters from the option definitions
+  $strip_colon = function($string){
+    return str_replace(':', $strig);
+  };
+
+  // perform the actual stripping
+  if($options)
+  {
+    $short_keys = explode("", $strip_colon($options));
+  }
+  if ($long_opts)
+  {
+    $long_keys = array_map($strip_colon, $opts_keys);
+  }
+
+  // return the requested 
+  if ($options && $long_opts)
+  {
+    return array_merge($short_keys, $long_keys);
+  }
+  elseif ($options)
+  {
+    return $short_keys;
+  }
+  elseif($long_opts)
+  {
+    return $long_keys;
+  }
+  else
+  {
+    return null;
+  }
+}
+
+
+function get_tree()
+{
+  global $PROJ_TREE;
+  if ( $PROJ_TREE == null)
+    $form_cache = restore_tree($path, 
+  return $PROJ_TREE;
+}
+
+
+
+function get_os()
+{
+  // Assume that all systems that are not windows are unix.
+  if ( strpos("windows", strtolower(php_uname('s'))) === false)
+  {
+    return "windows";
+  }
+  else
+  {
+    return "unix";
+  }
+}
+
+
+/*
+ * Determine if we should run artisan or not
+ *
+ * @param array  $arguments
+ * @param array  $opt_keys
+ *
+ * @return bool
+ */
+function run_artisan($arguments, $opt_keys, $options)
 {
 
-  
-  $tree = get_tree();
-  $proj_root = search_tree($path, $tree);
+  // partisans specific options require at at least three arguments
+  if (count($arguments) < 2)
+  {
+    return true;
+  }
+
+  if(non_partisan($opt_keys, $options)
+  $project = realpath($project); 
+  if (! is_dir($project))
+  {
+    echo "project path $project, not a valid directory";
+  }
+  elseif ( ! file_exists($project. SEP . "artisan"))
+  {
+    echo "can't find artisan binary for project path $project.";
+  }
+  $tree = restore_tree($path);
+  $tree = add_proj($project, $tree);
+  if( store_tree($path, $tree))
+  {
+    echo "new project $project has been added to partisan";
+  }
+
+}
+
+/*
+ * return the path to the directory containing user
+ * specific data
+ * @return string
+ */
+function user_dir()
+{
+  if ( get_os() !== "unix")
+  {
+    //TODO some day make this work for windows
+    trigger_error("not implemented");
+  }
+  $HOME = getenv('HOME');
+  return "$HOME" . SEP . ".partisan";
+}
+
+
+/* Return the absolute path to the artisan bin for the
+ * given project
+ * 
+ * @param string $path
+ * @param string $bin_name
+ *
+ * @return string
+ */
+function get_bin($path, $bin_name)
+{
+  $bin_path = $path . SEP . $bin_name;
+  if (! file_exists($bin_path)) return $bin_path;
+  else return null;
+}
+
+// forward arguments to artisan binary and execute it.
+function artisan_exec($bin_path, $arguments)
+{
   if ( $proj_root !== null)
   {
-
     $artisan = $proj_root . SEP . 'artisan';
 
     if (file_exists($artisan))
@@ -109,6 +292,14 @@ function search_tree($dir, $tree)
   return null;
 }
 
+function get_table()
+{
+  global $proj_table;
+  return $proj_table;
+}
+
+
+
 function restore_tree($path)
 {
   return unserialize(file_get_contents($path));
@@ -121,42 +312,6 @@ function store_tree($path, $tree)
 }
 
 
-/*
- * Determine if we should run artisan or not
- *
- * @param array  $arguments
- * @param array  $opt_keys
- *
- * @return bool
- */
-function run_artisan($arguments, $opt_keys)
-{
-
-  // partisans specific options require at at least to optoins.
-  if (count($arguments) < 2)
-  {
-    return true;
-  }
-
-  $options = getopt($options, $long_opts);
-  if(non_partisan($opt_keys, $recieved)
-  $project = realpath($project); 
-  if (! is_dir($project))
-  {
-    echo "project path $project, not a valid directory";
-  }
-  elseif ( ! file_exists($project. SEP . "artisan"))
-  {
-    echo "can't find artisan binary for project path $project.";
-  }
-  $tree = restore_tree($path);
-  $tree = add_proj($project, $tree);
-  if( store_tree($path, $tree))
-  {
-    echo "new project $project has been added to partisan";
-  }
-
-}
 
 /*
  * find if there are any options passed from the shell
@@ -167,7 +322,7 @@ function run_artisan($arguments, $opt_keys)
  *
  * @return array
  */
-function non_partisan($opt_keys, $recieved)
+function non_partisan($recieved, $opt_keys)
 {
 
   // optoins that are not specific to partisan
@@ -187,50 +342,6 @@ function non_partisan($opt_keys, $recieved)
 
 
 
-/*
- * strip ':' symboles from shell option definitions  and place
- * them in a array
- *
- * @param  string $options
- * @param  array  $long_opts
- *
- * @return array
- */
-function strip_opts($options = "", $long_opts = array())
-{
-  // remove all ':' characters from the option definitions
-  $strip_colon = function($string){
-    return str_replace(':', $strig);
-  };
-
-  // perform the actual stripping
-  if($options)
-  {
-    $short_keys = explode("", $strip_colon($options));
-  }
-  if ($long_opts)
-  {
-    $long_keys = array_map($strip_colon, $opts_keys);
-  }
-
-  // return the requested 
-  if ($options && $long_opts)
-  {
-    return array_merge($short_keys, $long_keys);
-  }
-  elseif ($options)
-  {
-    return $short_keys;
-  }
-  elseif($long_opts)
-  {
-    return $long_keys;
-  }
-  else
-  {
-    return null;
-  }
-}
 
 function add_proj($path)
 {
@@ -241,22 +352,6 @@ function dir2array($dir)
   // stripp root, trailing slash; surrounding space chars
   $stripped = trim($dir, SEP.' \t');
   return split(SEP, $stripped);
-}
-
-
-function run()
-{
-  $PWD = getenv('PWD');
-  $opt_keys = strip_opts(OUR_OPTS, OUR_LONG);
-  if (run_artisan($ARGV, $opt_keys))
-  {
-    $status = artisan_exec($PWD, $ARGV);
-  }
-  else
-  {
-    $status = internal_exec($ARGV, $opt_keys);
-  }
-  exit($status);
 }
 
 
