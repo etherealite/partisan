@@ -83,18 +83,12 @@ function strip_opts($options = "", $long_opts = array())
 {
   // remove all ':' characters from the option definitions
   $strip_colon = function($string){
-    return str_replace(':', $strig);
+    return str_replace(':', $string);
   };
 
   // perform the actual stripping
-  if($options)
-  {
     $short_keys = explode("", $strip_colon($options));
-  }
-  if ($long_opts)
-  {
     $long_keys = array_map($strip_colon, $opts_keys);
-  }
 
     return array_merge($short_keys, $long_keys);
 }
@@ -104,7 +98,9 @@ function get_tree()
 {
   global $PROJ_TREE;
   if ( $PROJ_TREE == null)
-    $form_cache = restore_tree($path, 
+  {
+    $form_cache = restore_tree($path);
+  }
   return $PROJ_TREE;
 }
 
@@ -308,6 +304,11 @@ function search_tree($path, $tree)
     }
   }
   return null;
+}
+
+function store_table($path, $table)
+{
+  file_put_contents($path, 'return ' . var_export($table));
 }
 
 function get_table()
