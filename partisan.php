@@ -7,27 +7,44 @@ ini_set('display_errors', 1);
 set_error_handler("e_handler");
 function e_handler( $errno, $errstr)
 { 
-  echo "$errno, $errstr";
+  #echo "$errno, $errstr";
   debug_print_backtrace();
   exit(1);
 }
 
+
 // Maybe this script can work with windows someday.
 define('SEP', DIRECTORY_SEPARATOR);
 
-// options that specificaly bound to partisan
-define(OUR_OPTS, "");
-define(OUR_LONG, array("add-project:", "remove-project:"));
 
 // The name of the artisan binary
-define(ARTISAN_BIN, "artisan");
+define("ARTISAN_BIN", "artisan");
+
+
+/*
+ * **************************************
+ * Globals, because why not?
+ */
+
+// shell arguments
+$ARGV = $argv;
+
+// current working directory provided by shell
+$PWD = getenv('PWD');
+
+// options that are specificaly bound to partisan
+$OUR_SHORT = "";
+$OUR_LONG = array(
+  "add-project:",
+  "remove-project:",
+  "run-server"
+);
 
 // Tree structure containg all project directories
 $PROJ_TREE = array();
-// Flatt array structure containg all project directories
-$PROJ_TABLE = array();
-// The current operating system
 
+// Flat array structure containg all project directories
+$PROJ_TABLE = array();
 
 /*
  * interpret arguments given from shell and act accordingly.
@@ -36,37 +53,57 @@ $PROJ_TABLE = array();
  */
 function run()
 {
-  $PWD = getenv('PWD');
-  $options = getopt($options, $long_opts);
-  $opt_keys = strip_opts(OUR_OPTS, OUR_LONG);
+  global $ARGV;
+  global $PWD;
+  global $OUR_SHORT;
+  global $OUR_LONG;
 
-  if (run_artisan($ARGV, $options, $opt_keys))
+  $options = getopt($OUR_SHORT, $OUR_LONG);
+  $opt_keys = strip_merge($OUR_SHORT, $OUR_LONG);
+
+  var_dump( for_partisan($opt_keys, $options));
+  exit;
+
+  $status = 1;
+  $msg= "";
+  if (for_partisan($opt_keys, $options))
   {
-    if(($tree = get_tree(user_dir())) == null)
-    {
-      echo "Couldn't find project tree cache";
-    }
-    elseif (($project_dir = search_tree($PWD, $tree)) == null)
-    {
-      echo "Current working directory not a subdirectory of"
-        . " a valid project";
-      exit(2);
-    }
-    elseif (($bin_path = get_bin($project_dir, ARTISAN_BIN)) == null)
-    {
-      echo "Coudn't find an artisan binary for project $project_dir\n";
-      exit(3);
-    }
-    else
-    {
-      $status = artisan_exec($bin_path, $ARGV);
-    }
+    $status = internal_exec($options, $opt_keys);
   }
   else
   {
-    $status = internal_exec($ARGV, $opt_keys);
+    $path = get_project($PWD);
+    if($path != null)
+    {
+      $status = artisan_exec($ARGV, $path);
+    }
+    else
+    {
+      $msg = "the current working directory is not a regitered project";
+    }
   }
+  if ($msg) print $msg;
   exit($status);
+}
+
+
+function add_project($path)
+{
+  if (! is_dir($project))
+  {
+    echo "project path $project, not a valid directory";
+  }
+  elseif ( ! file_exists($project. SEP . "artisan"))
+  {
+    echo "can't find artisan binary for project path $project.";
+  }
+  $table = get_table();
+  $table[] = $project;
+  $tree = get_tree();
+  if( store_tree($path, $tree))
+  {
+    echo "new project $project has been added to partisan";
+  }
 }
 
 
@@ -79,27 +116,52 @@ function run()
  *
  * @return array
  */
-function strip_opts($options = "", $long_opts = array())
+function strip_merge($options = "", $long_opts = array())
 {
   // remove all ':' characters from the option definitions
   $strip_colon = function($string){
-    return str_replace(':', $string);
+    return str_replace(':', '', $string);
   };
 
   // perform the actual stripping
-    $short_keys = explode("", $strip_colon($options));
-    $long_keys = array_map($strip_colon, $opts_keys);
+  $short_keys = array();
+  if ($options)
+  {
+    $short_keys = str_split($strip_colon($options));
+  }
 
-    return array_merge($short_keys, $long_keys);
+  $long_keys = array_map($strip_colon, $long_opts);
+
+  return array_merge($short_keys, $long_keys);
 }
 
 
+/*
+ * set the state of the global project tree
+ *
+ * @param array tree
+ */
+function set_tree($tree)
+{
+  global $PROJ_TREE;
+  $PROJ_TREE = $tree;
+}
+
+
+/*
+ * get the current global project tree or grab the cached
+ * version and set the global
+ *
+ * @return array $PROJ_TREE
+ */
 function get_tree()
 {
   global $PROJ_TREE;
   if ( $PROJ_TREE == null)
   {
-    $form_cache = restore_tree($path);
+    $path = get_path('tree_cache');
+    $tree = restore_tree($path);
+    set_tree($tree);
   }
   return $PROJ_TREE;
 }
@@ -125,42 +187,6 @@ function get_os()
 
 
 /*
- * Determine if we should run artisan or not
- *
- * @param array  $arguments
- * @param array  $opt_keys
- *
- * @return bool
- */
-function run_artisan($arguments, $opt_keys, $options)
-{
-
-  // partisans specific options require at at least three arguments
-  if (count($arguments) < 2)
-  {
-    return true;
-  }
-
-  if(non_partisan($opt_keys, $options)
-  $project = realpath($project); 
-  if (! is_dir($project))
-  {
-    echo "project path $project, not a valid directory";
-  }
-  elseif ( ! file_exists($project. SEP . "artisan"))
-  {
-    echo "can't find artisan binary for project path $project.";
-  }
-  $tree = restore_tree($path);
-  $tree = add_proj($project, $tree);
-  if( store_tree($path, $tree))
-  {
-    echo "new project $project has been added to partisan";
-  }
-
-}
-
-/*
  * return the path to the directory containing user
  * specific data
  * @return string
@@ -170,10 +196,35 @@ function user_dir()
   if ( get_os() !== "unix")
   {
     //TODO some day make this work for windows
-    trigger_error("not implemented");
+    trigger_error("non unix systems are unsupported");
   }
   $HOME = getenv('HOME');
   return "$HOME" . SEP . ".partisan";
+}
+
+
+/*
+ * returns  all the paths used for cache and configuration
+ * 
+ * @param string $key
+ *
+ * @return string
+ */
+function get_path($key)
+{
+  $user_dir = user_dir();
+
+  switch ($key)
+  {
+    case "tree_cache":
+      return $user_dir . '/.cache/tree.php';
+      break;
+    case "table":
+      return $user_dir . '/projects.inc';
+      break;
+  }
+
+
 }
 
 
@@ -189,7 +240,21 @@ function get_bin($path, $bin_name)
 {
   $bin_path = $path . SEP . $bin_name;
   if (! file_exists($bin_path)) return $bin_path;
-  else return null;
+
+  return null;
+}
+
+
+/*
+ * Run the php webserver for current project
+ *
+ * @param string $project
+ */
+function run_server($project)
+{
+  $webroot = $path . '/public';
+  passthru("php -S localhost:8000 -t $webroot", $status);
+  return $status;
 }
 
 
@@ -200,15 +265,14 @@ function get_bin($path, $bin_name)
  *
  * @return integer
  */
-function artisan_exec($bin_path, $arguments)
+function artisan_exec($arguments, $path)
 {
-  if ( $proj_root !== null)
   {
-    $artisan = $proj_root . SEP . 'artisan';
+    $artisan = $path . SEP . 'artisan';
 
-    if (file_exists($artisan))
+    if ( ! file_exists($artisan))
     {
-      global $argv;
+      print "artisan binary not found in project root: $proj_root\n";
       $arguments = array();
       foreach ($argv as $argu)
       {
@@ -219,16 +283,6 @@ function artisan_exec($bin_path, $arguments)
       passthru("php $artisan $arguments", $status);
       return $status;
     }
-    else
-    {
-      print "artisan binary not found in project root: $proj_root\n";
-    }
-  }
-  else
-  {
-    print "Current working directory $PWD is not within a registered " .
-      "laravel project directory.\n";
-  }
 }
 
 
@@ -306,10 +360,20 @@ function search_tree($path, $tree)
   return null;
 }
 
+
+function restore_table($path)
+{
+  if ( ! file_exists($path)) return null;
+
+  return require $path;
+}
+
+
 function store_table($path, $table)
 {
   file_put_contents($path, 'return ' . var_export($table));
 }
+
 
 function get_table()
 {
@@ -318,9 +382,13 @@ function get_table()
 }
 
 
-
 function restore_tree($path)
 {
+  if ( ! file_exists($path))
+  {
+    return null;
+  }
+
   return unserialize(file_get_contents($path));
 }
 
@@ -330,10 +398,28 @@ function store_tree($path, $tree)
   return file_put_contents($path, serialize($tree));
 }
 
+/*
+ * determineif any options passed from the shell
+ * are not partisan specific
+ * 
+ * @param array $opt_keys
+ * @param array $option
+ */
+function for_partisan($opt_keys, $options)
+{
+  foreach (array_keys($options))
+  {
+    if ( ! in_array($opt_keys))
+    {
+      return false;
+    }
+  }
+  return true;
+}
 
 
 /*
- * find if there are any options passed from the shell
+ * filter and return any options passed from the shell
  * that are not specific to partisan
  *
  * @param  array  $opt_keys
@@ -341,7 +427,7 @@ function store_tree($path, $tree)
  *
  * @return array
  */
-function non_partisan($recieved, $opt_keys)
+function non_partisan($opt_keys, $options)
 {
 
   // optoins that are not specific to partisan
@@ -362,14 +448,8 @@ function non_partisan($recieved, $opt_keys)
 
 
 
-function add_proj($path)
-{
-}
 
 
 
-
-if (!array_key_exists("add", $longopts)) $project = $longopts["add"];
-if (count($argv) == 2 && $project != null)
 
 run();
