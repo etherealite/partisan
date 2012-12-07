@@ -377,8 +377,15 @@ function store_table($path, $table)
 
 function get_table()
 {
-  global $proj_table;
-  return $proj_table;
+  global $PROJ_TABLE;
+  if ($PROJ_TABLE == null)
+  {
+    $path = get_path('table_cache');
+    $table = restore_table($path);
+    set_table($table);
+  }
+
+  return $table;
 }
 
 
@@ -407,7 +414,7 @@ function store_tree($path, $tree)
  */
 function for_partisan($opt_keys, $options)
 {
-  foreach (array_keys($options))
+  foreach (array_keys($options) as $option)
   {
     if ( ! in_array($opt_keys))
     {
@@ -444,12 +451,3 @@ function non_partisan($opt_keys, $options)
   }
   return $not_ours;
 }
-
-
-
-
-
-
-
-
-run();
