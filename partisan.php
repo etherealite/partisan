@@ -15,25 +15,30 @@ function e_handler( $errno, $errstr)
 
 // Maybe this script can work with windows someday.
 define('SEP', DIRECTORY_SEPARATOR);
-
+define('TESTING', false);
 
 /*
  * **************************************
  * Globals, because why not?
  */
 
-// shell arguments
-$ARGV = $argv;
-
-// current working directory provided by shell
-$PWD = getenv('PWD');
-
 // options that are specificaly bound to partisan
 $OUR_SHORT = "";
 $OUR_LONG = array(
   "add-project:",
-  "run-server"
+  "forget-project:",
+  "show-projects",
+  "create-project:",
+  "run-server::",
+  "help"
 );
+
+// the path to the current project detected from the
+// current working directory
+$PROJECT = null;
+
+// options provided by shell
+$OPTIONS = array();
 
 // Tree structure containg all project directories
 $PROJ_TREE = array();
@@ -48,24 +53,50 @@ $PROJ_TABLE = array();
  */
 function run()
 {
-  global $ARGV;
-  global $PWD;
   global $OUR_SHORT;
   global $OUR_LONG;
+  global $argv;
 
+  // shell arguments
+  $ARGV = $argv;
+
+  // current working directory provided by shell
+  $PWD = getenv('PWD');
+
+  // initialize options using the php builtin
   $options = getopt($OUR_SHORT, $OUR_LONG);
+  set_options($options);
+
+  // reformat option keys for easier use
   $opt_keys = strip_merge($OUR_SHORT, $OUR_LONG);
 
+  // check current working directory is a project.
   $project = detect_project($PWD);
+  if ($project !== null)
+  {
+    set_project($project);
+  }
 
-  $status = 1;
+  $status = null;
   if (for_partisan($opt_keys, $options))
   {
-    $status = internal_exec($options, $project);
+    // command is internal to partisan
+    $status = internal_exec($options);
   }
   elseif($project != null)
   {
-    $status = artisan_exec($ARGV, $project);
+    // command is forwarded to artisan
+    $status = artisan_exec($ARGV);
+  }
+  else
+  {
+    $status = partisan_help();
+  }
+
+  $msg = get_msg($status);
+  if ($msg)
+  {
+    print $msg . "\n";
   }
   exit($status);
 }
@@ -100,6 +131,12 @@ function strip_merge($options = "", $long_opts = array())
 }
 
 
+/*
+ * detect if the nodes of a  path provided satisfy a 
+ * stored project path
+ *
+ * @param string $path
+ */
 function detect_project($path)
 {
   $tree = get_tree();
@@ -131,18 +168,126 @@ function for_partisan($opt_keys, $options)
 }
 
 
-function add_project($path)
+/*
+ * filter and return any options passed from the shell
+ * that are not specific to partisan
+ *
+ * @TODO this is currently cruft, could be usefull
+ * so leaving it in for now.
+ *
+ * @param  array  $opt_keys
+ * @param  array  $recieved
+ *
+ * @return array
+ */
+function non_partisan($opt_keys, $options)
 {
+
+  // optoins that are not specific to partisan
+  $not_ours = array();
+
+  // look for non partisan specific options
+  foreach ($recieved as $key => $val)
+  {
+    if ( ! in_array($key, $opt_keys))
+    {
+      //There is an option not recognized by partisan
+      $not_ours[$key] = $val;
+    }
+  }
+  return $not_ours;
+}
+
+
+/*
+ * run commmands that are internal to partisan
+ *
+ * @param array $options
+ * @param string $project
+ */
+function internal_exec($options)
+{
+  $status = null;
+  $keys = array_keys($options);
+  if (in_array("run-server", $keys))
+  {
+    $status = run_server();
+  }
+  elseif(in_array("add-project", $keys))
+  {
+    $status = add_project();
+  }
+  elseif(in_array("forget-project", $keys))
+  {
+    $status = forget_project();
+  }
+  elseif(in_array("create-project", $keys))
+  {
+    $status = create_project();
+  }
+  elseif(in_array("show-projects", $keys))
+  {
+    $status = show_projects();
+  }
+  elseif(in_array("help", $keys))
+  {
+    $status = partisan_help();
+  }
+  return $status;
+}
+
+
+/*
+ * Print Partisan specific help and then call
+ * call artisan's help if pwd in a project
+ */
+function partisan_help()
+{
+  $msg = <<<EOT
+You are currently using Partisan, the Artisan command
+wrapper for the Laravel PHP framework.
+
+options:
+--add-project    path          Track a new project path
+--forget-project path          Stop tracking the project path 
+--create-project name          Create a new project in current directory
+--show-projects                Show all projects registered with Partisan
+--run-server[=hostname:port]   Run the builtin php webserver for the current project (space is not an allowed argument separator)
+
+EOT;
+
+
+  print $msg . "\n";
+  $project = get_project();
+  if ($project)
+  {
+    print "Real Artisan help:\n";
+    artisan_exec("--help");
+  }
+
+  return 0;
+}
+
+
+/*
+ * Store a project path so it can be detected from the working
+ * directory
+ *
+ * @param string $path
+ *
+ * @return integer
+ */
+function add_project()
+{
+  $path = get_options("add-project");
   $project = realpath($path);
   if ( ! is_dir($project))
   {
-    echo "project path $project, not a valid directory";
-    return 1;
+    return 22;
   }
   elseif( ! file_exists($project . '/artisan'))
   {
-    echo "could not find artisan binary at $project/artisan\n";
-    return 1;
+    return 23;
   }
 
 
@@ -157,8 +302,7 @@ function add_project($path)
   if (in_array($project, $table))
   {
     //avoid duplication
-    echo "project path $project is already registered\n";
-    return 1;
+    return 21;
   }
   $table[] = $project;
   set_table($table);
@@ -170,44 +314,191 @@ function add_project($path)
     $tree = array();
   }
 
-  $tree = add_path($tree, $project);
+  $tree = tree_add_path($tree, $project);
   set_tree($tree);
 
+  // need to store table first or they will be considered out
+  // of sync
   if (store_table($table) and  store_tree($tree))
   {
-    echo "new project $project has been added to partisan\n";
+    echo "project location $project has been added to partisan\n";
   }
+  return 0;
 }
 
 
 /*
- * set the state of the global project tree
+ * remove the given project from the project table
+ * and persist the change
+ * 
+ * @param string $project
  *
- * @param array tree
+ * @return integer
  */
-function set_tree($tree)
+function forget_project()
 {
-  global $PROJ_TREE;
-  $PROJ_TREE = $tree;
-}
+  $raw_input = get_options("forget-project");
+  $path = realpath($raw_input);
 
-
-/*
- * get the current global project tree or grab the cached
- * version and set the global
- *
- * @return array $PROJ_TREE
- */
-function get_tree()
-{
-  global $PROJ_TREE;
-  if ( $PROJ_TREE == null)
+  $table = get_table();
+  if ($table === null)
   {
-    $path = get_path('tree_cache');
-    $tree = restore_tree($path);
-    set_tree($tree);
+    return 24;
   }
-  return $PROJ_TREE;
+
+  $index = array_search($path, $table);
+  if ( $index === false)
+  {
+    // given path is not tracked
+    return 25;
+  }
+
+  // remove the project from the project table
+  unset($table[$index]);
+  set_table($table);
+
+  $success = store_table($table);
+  if($success === false)
+  {
+    return 5;
+  }
+
+  // currently no way to delete projects from tree,
+  // rebuild the whole thing.
+  $tree = build_tree($table);
+  set_tree($tree);
+
+  $success = store_tree($tree);
+  if($success === false)
+  {
+    return 6;
+  }
+  return 0;
+}
+
+
+/*
+ * Create a new Laravel 4 "Illuminate" project and
+ * add register it with Partisan
+ */
+function create_project()
+{
+  $name = get_options("create-project");
+  $PWD = getenv('PWD');
+  $repository = "git://github.com/illuminate/app.git";
+  $status = null;
+  passthru("git clone $repository $name", $status);
+  if ($status !== 0)
+  {
+    return $status;
+  }
+
+  $project  = $PWD . "/$name";
+
+  $composer = shell_exec("which composer");
+  if ($composer == null)
+  {
+    $composer = shell_exec("which composer.phar");
+  }
+
+  //TODO download composer and install if not found.
+  if ($composer)
+  {
+    passthru("$composer install -d $project", $status);
+  }
+  add_project($project);
+  return $status;
+}
+
+
+/*
+ * print out all of the currently detectable projects
+ *
+ * @return void
+ */
+function show_projects()
+{
+  $table = get_table();
+  foreach ($table as $project)
+  {
+    print $project . "\n";
+  }
+  return 0;
+}
+
+
+/*
+ * Run the php webserver for the current project
+ *
+ * @param string $project
+ */
+function run_server()
+{
+  $project = get_project();
+  if ($project == null)
+  {
+    return 60; // status code
+  }
+  $host_port = get_options('run-server');
+  if ( ! $host_port) $host_port = "localhost:8000";
+  
+  $webroot = $project . '/public';
+  $status = null;
+  passthru("php -S $host_port  -t $webroot 1>&2", $status);
+  return $status;
+}
+
+
+/* forward arguments to artisan binary and execute it.
+ *
+ * @param string $bin_path
+ * @param array  $arguments
+ *
+ * @return integer
+ */
+function artisan_exec($arguments)
+{
+  $project = get_project();
+  $artisan = $project .'/artisan';
+
+  if ( ! file_exists($artisan))
+  {
+    return 65;
+  }
+
+  if ( ! is_string($arguments))
+  {
+    array_shift($arguments);
+    $arguments = join(" ", $arguments);
+  }
+
+  passthru("php $artisan $arguments", $status);
+  return $status;
+}
+
+
+/*
+ * contains all status messages
+ *
+ * @param integer $status
+ */
+function get_msg($status)
+{
+
+  $messages = array(
+    0  => null,
+    1  => null, // let the called external programs handle it.
+    5  => "Couldn't write to tracked projects table",
+    6  => "Couldn't write to tracked projects tree",
+    21 => "Project path is already registered",
+    22 => "Given project path is  not a valid directory",
+    23 => "Could not find artisan binary at given project path",
+    24 => "There are currently no tracked projects",
+    25 => "Given project path is not currently tracked",
+    60 => "Working directory not in a regsitered project",
+    65 => "No Artisan binary found in the current project",
+  );
+  return $messages[$status];
 }
 
 
@@ -268,69 +559,178 @@ function get_path($key)
 
 
 /*
- * Run the php webserver for current project
+ * return the value of an option provided by the shell
  *
- * @param string $project
+ * @param string $option
  */
-function run_server($project)
+function get_options($option = null)
 {
-  $webroot = $project . '/public';
-  passthru("php -S localhost:8000 -t $webroot 1>&2");
+  global $OPTIONS;
+  $options = $OPTIONS;
+  if($option)
+  {
+    return $options[$option];
+  }
+  return $options;
 }
 
 
 /*
- * run commmands that are internal to partisan
+ * Set the global options provided by the calling shell
  *
  * @param array $options
- * @param string $project
  */
-function internal_exec($options, $project)
+function set_options($options)
 {
-  $status = 1;
-  $keys = array_keys($options);
-  if (in_array("run-server", $keys))
-  {
-    if ($project != null)
-    {
-      run_server($project);
-    }
-    else
-    {
-      print "working directory not in a regsitered project\n";
-    }
-  }
-  elseif(in_array("add-project", $keys))
-  {
-    $dir = $options["add-project"];
-    add_project($dir);
-    $status = 0;
-  }
-  return $status;
+  global $OPTIONS;
+  $OPTIONS = $options;
 }
 
 
-/* forward arguments to artisan binary and execute it.
+/* Get the projected detected from the working directory
  *
- * @param string $bin_path
- * @param array  $arguments
- *
- * @return integer
+ * @param string $project
  */
-function artisan_exec($arguments, $path)
+function get_project()
 {
-  $artisan = $path .'/artisan';
+  global $PROJECT;
+  $project = $PROJECT;
+  return $project;
+}
 
-  if ( ! file_exists($artisan))
+
+/* set the projected detected from the working directory
+ *
+ * @param string $project
+ */
+function set_project($project)
+{
+  global $PROJECT;
+  $PROJECT = $project;
+}
+
+
+/*
+ * get the current global project tree or grab the cached
+ * version and set the global
+ *
+ * @return array $PROJ_TREE
+ */
+function get_tree()
+{
+  global $PROJ_TREE;
+  if ( $PROJ_TREE == null)
   {
-    print "artisan binary not found in project root: $proj_root\n";
-    return 1;
+    if (tree_is_synced())
+    {
+      // tree is in sync with table, load it from cache
+      $path = get_path('tree_cache');
+      $tree = restore_tree($path);
+    }
+    else
+    {
+      // tree is behind changes made to the table, rebuild
+      // the entire tree from the new table.
+      $table = get_table();
+      $tree = build_tree($table);
+    }
+    store_tree($tree);
+    set_tree($tree);
+  }
+  $proj_tree = $PROJ_TREE;
+  return $proj_tree;
+}
+
+
+/*
+ * determine if the tree is synced with the
+ * project table 
+ */
+function tree_is_synced()
+{
+  $tree_path = get_path('tree_cache');
+  if( ! file_exists($tree_path))
+  {
+    return false;
+  }
+  $tree_time = filemtime($tree_path);
+
+
+  $table_path = get_path('table');
+  if ( ! file_exists($table_path))
+  {
+    return false;
+  }
+  $table_time = filemtime($table_path);
+
+
+  if ($table_time > $tree_time)
+  {
+    return false;
+  }
+  return true;
+}
+
+/*
+ * set the state of the global project tree
+ *
+ * @param array tree
+ */
+function set_tree($tree)
+{
+  global $PROJ_TREE;
+  $PROJ_TREE = $tree;
+}
+
+
+/*
+ * Load a project tree from given path.
+ *
+ * @param string $path
+ *
+ * @return array
+ */
+function restore_tree($path)
+{
+  if ( ! file_exists($path))
+  {
+    return null;
   }
 
-  array_shift($arguments);
-  $arguments = join(" ", $arguments);
-  passthru("php $artisan $arguments", $status);
-  return $status;
+  return unserialize(file_get_contents($path));
+}
+
+
+/*
+ * Persist the given project tree to the proper path in
+ * the user directory
+ *
+ * @param array $tree
+ *
+ * @return mixed
+ */
+function store_tree($tree)
+{
+  $path = get_path('tree_cache');
+  return file_put_contents($path, serialize($tree));
+}
+
+
+/*
+ * build a new tree from array of path strings
+ *
+ * @param array $paths
+ *
+ * @return array
+ */
+function build_tree($paths)
+{
+  $tree = array();
+  foreach ($paths as $path)
+  {
+    $tree = tree_add_path($tree, $path);
+  }
+  return $tree;
 }
 
 
@@ -342,7 +742,7 @@ function artisan_exec($arguments, $path)
  *
  * @return array
  */
-function add_path($tree, $path)
+function tree_add_path($tree, $path)
 {
   $path_nodes = path2array($path);
   $branch = &$tree;
@@ -362,6 +762,14 @@ function add_path($tree, $path)
 }
 
 
+/*
+ * split a path path string into a flat array
+ * of directories
+ *
+ * @param string $dir
+ *
+ * @return array
+ */
 function path2array($dir)
 {
   // stripp root, trailing slash; surrounding space chars
@@ -399,35 +807,23 @@ function search_tree($path, $tree)
 }
 
 
-function set_table($table)
-{
-  global $PROJ_TABLE;
-  $PROJ_TABLE = $table;
-}
-
-
-function restore_table($path)
-{
-  if ( ! file_exists($path)) return null;
-
-  return require $path;
-}
-
-
-function store_table($table)
-{
-  $path = get_path('table');
-  $code = "<?php\n\n return " . var_export($table, true) . ';';
-  return file_put_contents($path, $code);
-}
-
-
+/*
+ * Pull in the global project table, try and restore
+ * from file if in null state.
+ *
+ * @return array
+ */
 function get_table()
 {
   global $PROJ_TABLE;
   if ($PROJ_TABLE == null)
   {
     $path = get_path('table');
+    if( ! file_exists($path))
+    {
+      return null;
+    }
+
     $table = restore_table($path);
     set_table($table);
   }
@@ -436,49 +832,47 @@ function get_table()
 }
 
 
-function restore_tree($path)
+/*
+ * Set the table global project table from input
+ *
+ * @return void
+ */
+function set_table($table)
 {
-  if ( ! file_exists($path))
-  {
-    return null;
-  }
-
-  return unserialize(file_get_contents($path));
-}
-
-
-function store_tree($tree)
-{
-  $path = get_path('tree_cache');
-  return file_put_contents($path, serialize($tree));
+  global $PROJ_TABLE;
+  $PROJ_TABLE = $table;
 }
 
 
 /*
- * filter and return any options passed from the shell
- * that are not specific to partisan
- *
- * @param  array  $opt_keys
- * @param  array  $recieved
+ * Load the project table array from file
+ * 
+ * @param string $path
  *
  * @return array
  */
-function non_partisan($opt_keys, $options)
+function restore_table($path)
 {
+  if ( ! file_exists($path)) return null;
 
-  // optoins that are not specific to partisan
-  $not_ours = array();
-
-  // look for non partisan specific options
-  foreach ($recieved as $key => $val)
-  {
-    if ( ! in_array($key, $opt_keys))
-    {
-      //There is an option not recognized by partisan
-      $not_ours[$key] = $val;
-    }
-  }
-  return $not_ours;
+  return require $path;
 }
 
-run();
+
+/*
+ * store the state of the given project table to file
+ * in user directtory
+ *
+ * @param array $table
+ */
+function store_table($table)
+{
+  $path = get_path('table');
+  $code = "<?php\n\n return " . var_export($table, true) . ';';
+  return file_put_contents($path, $code);
+}
+
+if (( ! TESTING) and php_sapi_name() === 'cli')
+{
+  run();
+}
