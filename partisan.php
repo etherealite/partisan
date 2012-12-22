@@ -90,6 +90,7 @@ function run()
   }
   else
   {
+    // no arguments just print out the help
     $status = partisan_help();
   }
 
@@ -252,7 +253,7 @@ options:
 --forget-project path          Stop tracking the project path 
 --create-project name          Create a new project in current directory
 --show-projects                Show all projects registered with Partisan
---run-server[=hostname:port]   Run the builtin php webserver for the current project (space is not an allowed argument separator)
+--run-server[=hostname:port]   Run the builtin php webserver for the current project (whitespace is not an allowed argument separator)
 
 EOT;
 
@@ -261,6 +262,7 @@ EOT;
   $project = get_project();
   if ($project)
   {
+    // Append real Artisan's help message to Partisan's
     print "Real Artisan help:\n";
     artisan_exec("--help");
   }
@@ -277,9 +279,12 @@ EOT;
  *
  * @return integer
  */
-function add_project()
+function add_project($path = null)
 {
-  $path = get_options("add-project");
+  if ($path == null)
+  {
+    $path = get_options("add-project");
+  }
   $project = realpath($path);
   if ( ! is_dir($project))
   {
@@ -290,14 +295,7 @@ function add_project()
     return 23;
   }
 
-
   $table = get_table();
-
-  if ($table === null)
-  {
-    $table = array();
-  }
-
 
   if (in_array($project, $table))
   {
@@ -385,6 +383,8 @@ function create_project()
 {
   $name = get_options("create-project");
   $PWD = getenv('PWD');
+  composer_install($PWD);
+  exit;
   $repository = "git://github.com/illuminate/app.git";
   $status = null;
   passthru("git clone $repository $name", $status);
@@ -400,13 +400,31 @@ function create_project()
   {
     $composer = shell_exec("which composer.phar");
   }
+  else
+  {
+    $installed = composer_install($project);
+    if($installed == 0) $composer = "$project/composer.phar";
+  }
+  $composer = trim($composer);
 
-  //TODO download composer and install if not found.
   if ($composer)
   {
+    #echo "$composer install -d $project"; exit;
     passthru("$composer install -d $project", $status);
   }
   add_project($project);
+  return $status;
+}
+
+
+function composer_install($path)
+{
+  $status = null;
+  $coerced = array("--install-dir=$path");
+  $installer = file_get_contents('https://getcomposer.org/installer');
+  $installer = str_replace('$argv', '$coerced', $installer);
+  $installer = str_replace('<?php', '', $installer);
+  $status = eval($installer);
   return $status;
 }
 
@@ -502,29 +520,8 @@ function get_msg($status)
 }
 
 
-/*
- * Determine the host operating system
- *
- * @return string
- */
-function get_os()
-{
-  return strtolower(php_uname('s'));
-}
-
-
-/*
- * return the path to the directory containing user
- * specific data
- * @return string
- */
 function user_dir()
 {
-  if (get_os() !== "linux")
-  {
-    //TODO some day make this work for windows
-    trigger_error("only linux is supported");
-  }
   $HOME = getenv('HOME');
   $path = "$HOME" . SEP . ".partisan";
   if ( ! is_dir($path))
@@ -818,16 +815,20 @@ function get_table()
   global $PROJ_TABLE;
   if ($PROJ_TABLE == null)
   {
+    $table = array();
     $path = get_path('table');
-    if( ! file_exists($path))
+    if(file_exists($path))
     {
-      return null;
+      $table = restore_table($path);
     }
-
-    $table = restore_table($path);
-    set_table($table);
+    else
+    {
+      // create an empty table file
+      store_table($table);
+    }
   }
 
+  set_table($table);
   return $table;
 }
 
@@ -868,7 +869,11 @@ function restore_table($path)
 function store_table($table)
 {
   $path = get_path('table');
-  $code = "<?php\n\n return " . var_export($table, true) . ';';
+  $comment = "For information purposes, DO NOT EDIT!";
+
+  $code = "<?php\n\n#$comment \n\n return " . 
+    var_export($table, true) . ';';
+
   return file_put_contents($path, $code);
 }
 
