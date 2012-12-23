@@ -5,11 +5,18 @@ PHP framework
 
 ## What it does
 Partisan enables the use of the Artisan command line 
-interface from anywhere in your project directory, 
-not just the root directory asis normally the case.
+interface from anywhere in your  Laravel project directory, 
+not just the root directory as is normally the case.
 This is accomplished by wrapping artisan with a binary
-that lives in a a directory accessible from your $PATH,
-allowing you to call it from anywhere on your system.
+that lives in a directory accessible from your $PATH,
+allowing you to call it from any form any working
+directory on your system.
+
+## Features
+* Use the Artisan CLI anywhere in your Laravel project Directory.
+* Automates creation of new Laravel projects.
+* Automates installation of composer for Laravel 4 projects.
+* simplifies running the PHP built-in development server for your Laravel project.
 
 ## Without Partisan
 When using Artisan you find yourself continually running
@@ -59,14 +66,32 @@ $ artisan
 ```
 That's it!
 
+## Installation
+1. Clone partisan into ~/.partisan
+
+   ```sh
+   $ git clone git://github.com/etherealite/partisan.git ~/.partisan
+   ```
+
+2. Add Partisan to your `$PATH` to make it available when you call 
+if from the shell.
+
+   ~~~ sh
+   $ echo 'export PATH="$HOME/.partisan/bin:$PATH"' >> ~/.profile
+   ~~~
+4. Restart your shell..
+
+    ~~~ sh
+    $ exec $SHELL -l
+    ~~~
+5. Done.
+
+
 ## Requirements
 * Laravel >= 3.x
-* Unix like OS**
-
-**If anyone would like to do the work to port it to Windows I would
-be happy it merge it in.
+* Unix like operating system
 
 ## Feedback
 Any feedback is appreciated.
-- IRC #laravel on irc.freenode.net nick is etherealite
+- IRC #laravel on irc.freenode.net my nick is etherealite
 - Laravel [forums](http://forums.laravel.com/) user name: etherealite
