@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+partisan="$( cd "$( dirname "$0" )"/.. && pwd )"/partisan.php
+exec $partisan

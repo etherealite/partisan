@@ -17,10 +17,6 @@ function e_handler( $errno, $errstr)
 define('SEP', DIRECTORY_SEPARATOR);
 define('TESTING', false);
 
-/*
- * **************************************
- * Globals, because why not?
- */
 
 // options that are specificaly bound to partisan
 $OUR_SHORT = "";
@@ -32,6 +28,9 @@ $OUR_LONG = array(
   "run-server::",
   "help"
 );
+
+// settings array
+$SETTINGS = array();
 
 // the path to the current project detected from the
 // current working directory
@@ -97,7 +96,7 @@ function run()
   $msg = get_msg($status);
   if ($msg)
   {
-    print $msg . "\n";
+    fwrite(STDERR, "$msg"."\n");
   }
   exit($status);
 }
@@ -141,10 +140,6 @@ function strip_merge($options = "", $long_opts = array())
 function detect_project($path)
 {
   $tree = get_tree();
-  if ($tree === null)
-  {
-    $tree = array();
-  }
   return search_tree($path, $tree);
 }
 
@@ -245,15 +240,21 @@ function internal_exec($options)
 function partisan_help()
 {
   $msg = <<<EOT
-You are currently using Partisan, the Artisan command
-wrapper for the Laravel PHP framework.
+You are currently using Partisan, the Artisan command wrapper for 
+the Laravel PHP framework.
 
 options:
 --add-project    path          Track a new project path
+
 --forget-project path          Stop tracking the project path 
+
 --create-project name          Create a new project in current directory
+
 --show-projects                Show all projects registered with Partisan
---run-server[=hostname:port]   Run the builtin php webserver for the current project (whitespace is not an allowed argument separator)
+
+--run-server[=hostname:port]   Run the builtin php webserver for the
+                               current project (whitespace is not 
+                               an allowed argument separator)
 
 EOT;
 
@@ -306,12 +307,6 @@ function add_project($path = null)
   set_table($table);
 
   $tree = get_tree();
-
-  if ($tree === null)
-  {
-    $tree = array();
-  }
-
   $tree = tree_add_path($tree, $project);
   set_tree($tree);
 
@@ -381,19 +376,31 @@ function forget_project()
  */
 function create_project()
 {
-  $name = get_options("create-project");
-  $PWD = getenv('PWD');
-  composer_install($PWD);
-  exit;
-  $repository = "git://github.com/illuminate/app.git";
   $status = null;
+  $name = get_options("create-project");
+
+  $git = shell_exec("which git");
+  $git = trim($git);
+  // no git binary found
+  if ( ! $git) return 71;
+
+  $repository = get_settings("laravel_repo");
   passthru("git clone $repository $name", $status);
   if ($status !== 0)
   {
-    return $status;
+    return 70;
   }
 
+  $PWD = getenv('PWD');
   $project  = $PWD . "/$name";
+
+  $version = get_settings("laravel_version");
+  if ($version == "3")
+  {
+    // laravel 3 doesn't use composer
+    add_project($project);
+    return 0;
+  }
 
   $composer = shell_exec("which composer");
   if ($composer == null)
@@ -417,13 +424,29 @@ function create_project()
 }
 
 
-function composer_install($path)
+function composer_install($path = null)
 {
   $status = null;
-  $coerced = array("--install-dir=$path");
+
+  if($path == null)
+  {
+    $project = get_project();
+    if ($project == null)
+    {
+      // not in a project dir
+      return 60;
+    }
+    $path = $project;
+  }
+
+
   $installer = file_get_contents('https://getcomposer.org/installer');
+  // monkey patch composer's stupid install script to follow our
+  // fake arguments
+  $coerced = array("--install-dir=$path");
   $installer = str_replace('$argv', '$coerced', $installer);
   $installer = str_replace('<?php', '', $installer);
+
   $status = eval($installer);
   return $status;
 }
@@ -459,7 +482,7 @@ function run_server()
   }
   $host_port = get_options('run-server');
   if ( ! $host_port) $host_port = "localhost:8000";
-  
+
   $webroot = $project . '/public';
   $status = null;
   passthru("php -S $host_port  -t $webroot 1>&2", $status);
@@ -496,6 +519,36 @@ function artisan_exec($arguments)
 
 
 /*
+ * loads and contains settings array
+ *
+ * @param string $setting
+ *
+ * @return mixed
+ */
+function get_settings($setting)
+{
+  global $SETTINGS;
+  if (empty($SETTINGS))
+  {
+    $file_name = "settings.php";
+    $path = user_dir() . "/" . $file_name;
+    if ( ! file_exists($path))
+    {
+      $path = __DIR__ . "/" . $file_name;
+    }
+    $SETTINGS = require $path;
+  }
+
+  if ( ! array_key_exists($setting, $SETTINGS))
+  {
+    print "couldn't find settings for key '$settings'";
+    exit(1);
+  }
+  return $SETTINGS[$setting];
+}
+
+
+/*
  * contains all status messages
  *
  * @param integer $status
@@ -515,8 +568,14 @@ function get_msg($status)
     25 => "Given project path is not currently tracked",
     60 => "Working directory not in a regsitered project",
     65 => "No Artisan binary found in the current project",
+    70 => "Git clone failed",
+    71 => "No git binary was found in your \$path",
   );
-  return $messages[$status];
+  if ( ! array_key_exists($status, $messages))
+  {
+    return "unkown error code: $status";
+  }
+    return $messages[$status];
 }
 
 
@@ -616,7 +675,7 @@ function set_project($project)
 function get_tree()
 {
   global $PROJ_TREE;
-  if ( $PROJ_TREE == null)
+  if (empty($PROJ_TREE))
   {
     if (tree_is_synced())
     {
